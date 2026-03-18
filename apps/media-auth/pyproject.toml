@@ -8,7 +8,6 @@ authors = [
 requires-python = ">=3.9"
 dependencies = [
     "Pillow>=10.0.0",
-    "python-gnupg>=0.5.1",
     "Flask>=3.0.0"
 ]
 

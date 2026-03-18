@@ -1,15 +1,9 @@
-"""Core logic module."""
-
 import hashlib
 import os
-import random
 import shutil
-import zipfile
+import subprocess
 from pathlib import Path
 from typing import Optional, Tuple
-
-import gnupg
-from PIL import Image
 
 
 def hash_file(filepath: str) -> str:
@@ -21,141 +15,95 @@ def hash_file(filepath: str) -> str:
     return sha256.hexdigest()
 
 
-def process_image(filepath: str, outpath: str, seed: Optional[int] = None) -> None:
-    """Randomly crop an image and save it."""
-    if seed is not None:
-        random.seed(seed)
-
-    with Image.open(filepath) as img:
-        width, height = img.size
-
-        # Crop to 80% of original size
-        new_width = int(width * 0.8)
-        new_height = int(height * 0.8)
-
-        # Ensure we don't go out of bounds
-        max_x = max(0, width - new_width)
-        max_y = max(0, height - new_height)
-
-        left = random.randint(0, max_x) if max_x > 0 else 0
-        top = random.randint(0, max_y) if max_y > 0 else 0
-        right = left + new_width
-        bottom = top + new_height
-
-        cropped = img.crop((left, top, right, bottom))
-        # Ensure we convert to RGB before saving as some formats (like JPEG) don't support RGBA
-        if cropped.mode in ("RGBA", "P"):
-            cropped = cropped.convert("RGB")
-        cropped.save(outpath)
-
-
-def init_gpg(gpg_home: str) -> gnupg.GPG:
-    """Initialize GPG object."""
+def _run_gpg(
+    gpg_home: str, args: list, input_data: Optional[bytes] = None
+) -> subprocess.CompletedProcess:
+    """Helper to run gpg commands with a specific home directory."""
     os.makedirs(gpg_home, exist_ok=True)
-    return gnupg.GPG(gnupghome=gpg_home)
+    os.chmod(gpg_home, 0o700)
+
+    cmd = ["gpg", "--homedir", gpg_home, "--batch", "--no-tty", "--yes"] + args
+    return subprocess.run(cmd, input=input_data, capture_output=True)
 
 
-def sign_hash(gpg: gnupg.GPG, data: str, keyid: Optional[str] = None) -> str:
-    """Sign a string (hash) using GPG."""
-    kwargs = {}
+def sign_hash(gpg_home: str, data: str, keyid: str) -> str:
+    """Sign a string (hash) using GPG clearsign."""
+    args = ["--clear-sign"]
     if keyid:
-        kwargs["keyid"] = keyid
+        args.extend(["--default-key", keyid])
 
-    signed = gpg.sign(data, **kwargs)
-    if not signed or not signed.data:
+    result = _run_gpg(gpg_home, args, input_data=data.encode("utf-8"))
+
+    if result.returncode != 0:
+        err_msg = result.stderr.decode("utf-8")
         raise ValueError(
-            f"Failed to sign data. Make sure a private key is available. stderr: {signed.stderr}"
+            f"Failed to sign data. Make sure a private key is available. stderr: {err_msg}"
         )
 
-    return str(signed)
+    return result.stdout.decode("utf-8")
 
 
-def export_public_key(gpg: gnupg.GPG, keyid: str, outpath: str) -> None:
+def export_public_key(gpg_home: str, keyid: str, outpath: str) -> None:
     """Export public key to a file."""
-    key_data = gpg.export_keys(keyid)
-    if not key_data:
-        raise ValueError(f"Failed to export public key for {keyid}")
+    args = ["--armor", "--export", keyid]
+    result = _run_gpg(gpg_home, args)
 
-    with open(outpath, "w") as f:
-        f.write(key_data)
+    if result.returncode != 0 or not result.stdout:
+        raise ValueError(
+            f"Failed to export public key for {keyid}. stderr: {result.stderr.decode('utf-8')}"
+        )
 
-
-def create_auth_zip(
-    original_media: str, cropped_media: str, signature_data: str, pubkey_path: str, out_zip: str
-) -> None:
-    """Bundle everything into a ZIP file."""
-    with zipfile.ZipFile(out_zip, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.write(original_media, arcname=f"original{Path(original_media).suffix}")
-        zf.write(cropped_media, arcname=f"cropped{Path(cropped_media).suffix}")
-        zf.write(pubkey_path, arcname="public_key.asc")
-        zf.writestr("signature.asc", signature_data)
+    with open(outpath, "wb") as f:
+        f.write(result.stdout)
 
 
-def sign_media(
-    filepath: str, out_zip: str, gpg_home: str, keyid: str, seed: Optional[int] = None
-) -> None:
-    """High-level function to sign media and create zip."""
-    gpg = init_gpg(gpg_home)
-
+def sign_media(filepath: str, out_folder: str, gpg_home: str, keyid: str) -> None:
+    """High-level function to sign media and create an auth folder."""
     file_hash = hash_file(filepath)
-    signature = sign_hash(gpg, file_hash, keyid)
+    signature = sign_hash(gpg_home, file_hash, keyid)
 
-    # Create temp directory for intermediate files
-    temp_dir = Path(out_zip).parent / f".tmp_{Path(out_zip).stem}"
-    temp_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = Path(out_folder)
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        cropped_path = str(temp_dir / f"cropped_{Path(filepath).name}")
-        process_image(filepath, cropped_path, seed)
+        shutil.copy2(filepath, out_dir / f"original{Path(filepath).suffix}")
 
-        pubkey_path = str(temp_dir / "public_key.asc")
-        export_public_key(gpg, keyid, pubkey_path)
+        with open(out_dir / "signature.asc", "w") as f:
+            f.write(signature)
 
-        create_auth_zip(filepath, cropped_path, signature, pubkey_path, out_zip)
-    finally:
-        shutil.rmtree(temp_dir, ignore_errors=True)
+        pubkey_path = str(out_dir / "public_key.asc")
+        export_public_key(gpg_home, keyid, pubkey_path)
+
+    except Exception as e:
+        shutil.rmtree(out_dir, ignore_errors=True)
+        raise e
 
 
 def verify_media(
-    zip_path: str, target_media_path: str, gpg_home: str, extract_dir: Optional[str] = None
+    target_media_path: str, pubkey_path: str, sig_path: str, gpg_home: str
 ) -> Tuple[bool, str]:
     """
-    Verify if target_media_path matches the signature in the zip.
-    Extracts the zip, imports public key, verifies signature, compares hashes.
+    Verify if target_media_path matches the signature.
+    Imports public key, verifies signature, compares hashes.
     Returns (True, message) if valid, (False, message) if invalid.
     """
-    if extract_dir is None:
-        extract_dir = str(Path(zip_path).parent / f".extract_{Path(zip_path).stem}")
-
-    os.makedirs(extract_dir, exist_ok=True)
+    if not os.path.exists(pubkey_path) or not os.path.exists(sig_path):
+        return False, "Provided signature or public key file does not exist."
 
     try:
-        with zipfile.ZipFile(zip_path, "r") as zf:
-            zf.extractall(extract_dir)
+        import tempfile
 
-        pubkey_path = os.path.join(extract_dir, "public_key.asc")
-        sig_path = os.path.join(extract_dir, "signature.asc")
+        with tempfile.TemporaryDirectory() as temp_gpg_home:
+            # Import the public key into an isolated temporary keyring
+            _run_gpg(temp_gpg_home, ["--import", pubkey_path])
 
-        if not os.path.exists(pubkey_path) or not os.path.exists(sig_path):
-            return False, "ZIP does not contain required signature or public key."
+            # Verify the signature and extract the hash
+            verify_result = _run_gpg(temp_gpg_home, ["--decrypt", sig_path])
+            if verify_result.returncode != 0:
+                err_msg = verify_result.stderr.decode("utf-8")
+                return False, f"GPG signature verification failed. {err_msg}"
 
-        gpg = init_gpg(gpg_home)
-
-        # Import the public key from the zip
-        with open(pubkey_path, "r") as f:
-            import_result = gpg.import_keys(f.read())
-            if import_result.count == 0:
-                # Key might already exist, which is fine
-                pass
-
-        # Verify the signature
-        with open(sig_path, "rb") as f:
-            verified = gpg.verify(f.read())
-
-        if not verified:
-            return False, "GPG signature verification failed."
-
-        original_hash = verified.data.decode("utf-8").strip()
+            original_hash = verify_result.stdout.decode("utf-8").strip()
 
         # Hash the target media
         target_hash = hash_file(target_media_path)
@@ -165,7 +113,5 @@ def verify_media(
         else:
             return False, "Hash mismatch! File has been altered."
 
-    finally:
-        # Clean up if we auto-created the dir
-        if str(Path(zip_path).parent / f".extract_{Path(zip_path).stem}") == extract_dir:
-            shutil.rmtree(extract_dir, ignore_errors=True)
+    except Exception as e:
+        return False, str(e)

@@ -16,17 +16,23 @@ def test_cli_sign(mocker):
 
 def test_cli_verify_success(mocker):
     mock_verify = mocker.patch("media_auth.cli.verify_media", return_value=(True, "Success"))
-    with patch("sys.argv", ["media-auth", "verify", "out.zip", "in.png"]):
+    with patch(
+        "sys.argv",
+        ["media-auth", "verify", "--pubkey-file", "pub.asc", "--sig-file", "sig.asc", "in.png"],
+    ):
         with pytest.raises(SystemExit) as e:
-            main(["verify", "out.zip", "in.png"])
+            main(["verify", "--pubkey-file", "pub.asc", "--sig-file", "sig.asc", "in.png"])
         assert e.value.code == 0
     mock_verify.assert_called_once()
 
 
 def test_cli_verify_fail(mocker):
     mock_verify = mocker.patch("media_auth.cli.verify_media", return_value=(False, "Fail"))
-    with patch("sys.argv", ["media-auth", "verify", "out.zip", "in.png"]):
+    with patch(
+        "sys.argv",
+        ["media-auth", "verify", "--pubkey-file", "pub.asc", "--sig-file", "sig.asc", "in.png"],
+    ):
         with pytest.raises(SystemExit) as e:
-            main(["verify", "out.zip", "in.png"])
+            main(["verify", "--pubkey-file", "pub.asc", "--sig-file", "sig.asc", "in.png"])
         assert e.value.code == 1
     mock_verify.assert_called_once()

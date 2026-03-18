@@ -66,10 +66,18 @@
         <div id="verify-panel" class="panel">
             <form id="verify-form" class="action-form">
                 <div class="input-group">
-                    <label for="verify-zip">Upload Auth ZIP</label>
-                    <div class="file-upload drop-zone" id="zip-drop">
-                        <input type="file" id="verify-zip" name="zip_file" accept=".zip" required hidden>
-                        <span class="file-label zip-label">Drag & drop auth zip or click to browse</span>
+                    <label for="verify-pubkey">Upload Public Key (.asc)</label>
+                    <div class="file-upload drop-zone" id="pubkey-drop">
+                        <input type="file" id="verify-pubkey" name="pubkey_file" accept=".asc,.pub,.txt" required hidden>
+                        <span class="file-label pubkey-label">Drag & drop public key or click to browse</span>
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label for="verify-sig">Upload Signature (.asc)</label>
+                    <div class="file-upload drop-zone" id="sig-drop">
+                        <input type="file" id="verify-sig" name="sig_file" accept=".asc,.sig,.txt" required hidden>
+                        <span class="file-label sig-label">Drag & drop signature file or click to browse</span>
                     </div>
                 </div>
 
@@ -160,8 +168,9 @@
                         reader.readAsDataURL(fileInput.files[0]);
                     }
                 } else {
-                    label.innerText = labelClass.includes('zip') ? 'Drag & drop auth zip or click to browse' : 
-                                    (labelClass.includes('media') ? 'Drag & drop media file or click to browse' : 'Drag & drop or click to browse');
+                    label.innerText = labelClass.includes('pubkey') ? 'Drag & drop public key or click to browse' : 
+                                    (labelClass.includes('sig') ? 'Drag & drop signature file or click to browse' : 
+                                    (labelClass.includes('media') ? 'Drag & drop media file or click to browse' : 'Drag & drop or click to browse'));
                     dropZone.classList.remove('has-file');
                     if (previewIdBox) {
                         document.getElementById(previewIdBox).style.display = "none";
@@ -171,7 +180,8 @@
         }
 
         setupFileInput('sign-file', 'sign-drop', 'file-label', 'sign-preview');
-        setupFileInput('verify-zip', 'zip-drop', 'zip-label');
+        setupFileInput('verify-pubkey', 'pubkey-drop', 'pubkey-label');
+        setupFileInput('verify-sig', 'sig-drop', 'sig-label');
         setupFileInput('verify-media', 'verify-drop', 'media-label', 'verify-preview');
 
         // Form submission (Sign)

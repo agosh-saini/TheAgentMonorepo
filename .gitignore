@@ -240,6 +240,7 @@ logs/
 .env
 .env.local
 .env.*.local
+*.asc
 
 # Editor / IDE
 .idea/
@@ -249,3 +250,6 @@ logs/
 
 # Pre-commit
 .pre-commit-cache/
+
+# Others
+apps/media-auth/media_auth/uploads/*

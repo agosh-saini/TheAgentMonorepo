@@ -26,52 +26,43 @@ def mock_gpg_home(temp_dir):
 
 @pytest.fixture
 def gpg_mock(mocker):
-    """Mock the gnupg.GPG class."""
-    mock = mocker.patch("media_auth.core.gnupg.GPG")
-    instance = mock.return_value
+    """Mock the subprocess.run inside core.py."""
 
-    # Mock sign
-    class MockSign:
-        def __init__(self, data):
-            self.data = (
-                f"-----BEGIN PGP SIGNATURE-----\n{data}\n-----END PGP SIGNATURE-----".encode(
-                    "utf-8"
-                )
+    class MockProcess:
+        def __init__(self, returncode, stdout, stderr=b""):
+            self.returncode = returncode
+            self.stdout = stdout
+            self.stderr = stderr
+
+    def mock_run_gpg(gpg_home, args, input_data=None):
+        if "--clear-sign" in args:
+            data = input_data.decode("utf-8")
+            out = f"-----BEGIN PGP SIGNATURE-----\n{data}\n-----END PGP SIGNATURE-----".encode(
+                "utf-8"
             )
-            self.stderr = ""
+            return MockProcess(0, out)
+        elif "--export" in args:
+            return MockProcess(
+                0,
+                b"-----BEGIN PGP PUBLIC KEY BLOCK-----\n"
+                b"MOCKKEY\n"
+                b"-----END PGP PUBLIC KEY BLOCK-----",
+            )
+        elif "--import" in args:
+            return MockProcess(0, b"")
+        elif "--decrypt" in args:
+            # signature path is the last arg
+            sig_path = args[-1]
+            try:
+                with open(sig_path, "r") as f:
+                    sig_data = f.read()
+                lines = sig_data.split("\n")
+                if len(lines) >= 3:
+                    data = lines[1].encode("utf-8")
+                    return MockProcess(0, data)
+                return MockProcess(1, b"", b"Verification failed")
+            except Exception:
+                return MockProcess(1, b"", b"Read failed")
+        return MockProcess(1, b"", b"Unknown command")
 
-        def __str__(self):
-            return self.data.decode("utf-8")
-
-    instance.sign.side_effect = lambda data, **kwargs: MockSign(data)
-
-    # Mock export
-    instance.export_keys.return_value = (
-        "-----BEGIN PGP PUBLIC KEY BLOCK-----\nMOCKKEY\n-----END PGP PUBLIC KEY BLOCK-----"
-    )
-
-    # Mock import
-    class MockImportResult:
-        count = 1
-
-    instance.import_keys.return_value = MockImportResult()
-
-    # Mock verify
-    class MockVerify:
-        def __init__(self, sig_data):
-            self.valid = True
-            # Extract the hash data from the mock signature
-            text = sig_data.decode("utf-8")
-            lines = text.split("\n")
-            if len(lines) >= 3:
-                self.data = lines[1].encode("utf-8")
-            else:
-                self.data = b"wrong"
-                self.valid = False
-
-        def __bool__(self):
-            return self.valid
-
-    instance.verify.side_effect = lambda sig_data: MockVerify(sig_data)
-
-    return instance
+    return mocker.patch("media_auth.core._run_gpg", side_effect=mock_run_gpg)

@@ -20,12 +20,11 @@ def handle_sign(args: argparse.Namespace) -> None:
     try:
         sign_media(
             filepath=args.input_file,
-            out_zip=args.out_zip,
+            out_folder=args.out_folder,
             gpg_home=args.gpg_home,
             keyid=args.keyid,
-            seed=args.seed,
         )
-        logger.info(f"Successfully signed media. Zip output at: {args.out_zip}")
+        logger.info(f"Successfully signed media. Output folder at: {args.out_folder}")
     except Exception as e:
         logger.error(f"Sign failed: {str(e)}")
         sys.exit(1)
@@ -35,7 +34,10 @@ def handle_verify(args: argparse.Namespace) -> None:
     """Handle verify command."""
     try:
         valid, msg = verify_media(
-            zip_path=args.zip_file, target_media_path=args.target_file, gpg_home=args.gpg_home
+            target_media_path=args.target_file,
+            pubkey_path=args.pubkey_file,
+            sig_path=args.sig_file,
+            gpg_home=args.gpg_home,
         )
         if valid:
             logger.info(msg)
@@ -54,19 +56,19 @@ def main(args_list: Optional[list[str]] = None) -> None:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # Sign parser
-    sign_parser = subparsers.add_parser("sign", help="Sign a media file and create a auth zip.")
+    sign_parser = subparsers.add_parser("sign", help="Sign a media file and create an auth folder.")
     sign_parser.add_argument("input_file", help="Path to original media file.")
-    sign_parser.add_argument("out_zip", help="Path to output zip file.")
+    sign_parser.add_argument("out_folder", help="Path to output folder.")
     sign_parser.add_argument("--keyid", help="GPG Key ID to use for signing.")
     sign_parser.add_argument("--gpg-home", default="~/.gnupg", help="GPG home directory.")
-    sign_parser.add_argument(
-        "--seed", type=int, default=None, help="Deterministic seed for cropping."
-    )
 
     # Verify parser
-    verify_parser = subparsers.add_parser("verify", help="Verify a media file against an auth zip.")
-    verify_parser.add_argument("zip_file", help="Path to auth zip file.")
+    verify_parser = subparsers.add_parser(
+        "verify", help="Verify a media file using its public key and signature."
+    )
     verify_parser.add_argument("target_file", help="Path to the media file to verify.")
+    verify_parser.add_argument("--pubkey-file", required=True, help="Path to the public key file.")
+    verify_parser.add_argument("--sig-file", required=True, help="Path to the signature file.")
     verify_parser.add_argument("--gpg-home", default="~/.gnupg", help="GPG home directory.")
 
     # Web parser

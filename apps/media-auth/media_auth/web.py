@@ -2,6 +2,7 @@
 
 import os
 import secrets
+import shutil
 from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request, send_file
@@ -48,13 +49,16 @@ def api_sign():
         filepath = os.path.join(app.config["UPLOAD_FOLDER"], file.filename)
         file.save(filepath)
 
-        # Determine output zip name
-        out_zip = os.path.join(
-            app.config["UPLOAD_FOLDER"], f"signed_{Path(file.filename).stem}.zip"
-        )
+        # Determine output folder name
+        out_folder = os.path.join(app.config["UPLOAD_FOLDER"], f"signed_{Path(file.filename).stem}")
 
         # Sign it using core logic
-        sign_media(filepath=filepath, out_zip=out_zip, gpg_home=DEFAULT_GPG_HOME, keyid=keyid)
+        sign_media(filepath=filepath, out_folder=out_folder, gpg_home=DEFAULT_GPG_HOME, keyid=keyid)
+
+        # Zip the folder to serve as a download
+        out_zip = f"{out_folder}.zip"
+        shutil.make_archive(out_folder, "zip", out_folder)
+        shutil.rmtree(out_folder)
 
         # We can either return the file or just an info object
         # Returning the downloaded file via URL route is better, but this is a simple UI
@@ -69,24 +73,36 @@ def api_sign():
 @app.route("/api/verify", methods=["POST"])
 def api_verify():
     """Handle verification request."""
-    if "zip_file" not in request.files or "media_file" not in request.files:
-        return jsonify({"success": False, "error": "Missing zip_file or media_file"}), 400
+    if (
+        "pubkey_file" not in request.files
+        or "sig_file" not in request.files
+        or "media_file" not in request.files
+    ):
+        return jsonify(
+            {"success": False, "error": "Missing pubkey_file, sig_file, or media_file"}
+        ), 400
 
-    zip_file = request.files["zip_file"]
+    pubkey_file = request.files["pubkey_file"]
+    sig_file = request.files["sig_file"]
     media_file = request.files["media_file"]
 
-    if zip_file.filename == "" or media_file.filename == "":
-        return jsonify({"success": False, "error": "Both files must be selected"}), 400
+    if pubkey_file.filename == "" or sig_file.filename == "" or media_file.filename == "":
+        return jsonify({"success": False, "error": "All files must be selected"}), 400
 
     try:
-        zip_path = os.path.join(app.config["UPLOAD_FOLDER"], zip_file.filename)
+        pubkey_path = os.path.join(app.config["UPLOAD_FOLDER"], pubkey_file.filename)
+        sig_path = os.path.join(app.config["UPLOAD_FOLDER"], sig_file.filename)
         media_path = os.path.join(app.config["UPLOAD_FOLDER"], media_file.filename)
 
-        zip_file.save(zip_path)
+        pubkey_file.save(pubkey_path)
+        sig_file.save(sig_path)
         media_file.save(media_path)
 
         valid, msg = verify_media(
-            zip_path=zip_path, target_media_path=media_path, gpg_home=DEFAULT_GPG_HOME
+            target_media_path=media_path,
+            pubkey_path=pubkey_path,
+            sig_path=sig_path,
+            gpg_home=DEFAULT_GPG_HOME,
         )
 
         return jsonify({"success": True, "valid": valid, "message": msg})
