@@ -1,0 +1,33 @@
+[project]
+name = "media-auth"
+version = "0.1.0"
+description = "A tool to cryptographically sign and verify media files"
+authors = [
+    {name = "Antigravity", email = "ai@example.com"}
+]
+requires-python = ">=3.9"
+dependencies = [
+    "Pillow>=10.0.0",
+    "python-gnupg>=0.5.1",
+    "Flask>=3.0.0"
+]
+
+[project.scripts]
+media-auth = "media_auth.cli:main"
+
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+addopts = "-v --cov=media_auth --cov-report=term-missing"
+markers = [
+    "smoke: mark a test as a smoke test"
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]

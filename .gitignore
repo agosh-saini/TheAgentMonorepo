@@ -205,3 +205,47 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# -----------------------------------------------
+# Node / Next.js
+# -----------------------------------------------
+node_modules/
+.next/
+dist/
+.turbo/
+.vercel/
+out/
+*.tsbuildinfo
+.npm/
+
+# -----------------------------------------------
+# SQLite databases — store files in data/sqlite/
+# -----------------------------------------------
+data/sqlite/*.db
+data/sqlite/*.db-shm
+data/sqlite/*.db-wal
+*.sqlite
+*.sqlite3
+
+# -----------------------------------------------
+# General
+# -----------------------------------------------
+.DS_Store
+Thumbs.db
+*.log
+*.log.*
+logs/
+
+# Environment files (keep .env.example)
+.env
+.env.local
+.env.*.local
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Pre-commit
+.pre-commit-cache/

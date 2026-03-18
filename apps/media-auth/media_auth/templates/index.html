@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Media Authenticator</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+    <div class="background-animations">
+        <div class="orb orb-1"></div>
+        <div class="orb orb-2"></div>
+        <div class="orb orb-3"></div>
+    </div>
+
+    <div class="glass-container">
+        <header>
+            <div class="logo">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 2L3 7V11C3 16.55 6.84 21.74 12 23C17.16 21.74 21 16.55 21 11V7L12 2Z" fill="url(#paint0_linear)"/>
+                    <path d="M16 10L10.5 15.5L8 13" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <defs>
+                        <linearGradient id="paint0_linear" x1="3" y1="2" x2="21" y2="23" gradientUnits="userSpaceOnUse">
+                            <stop stop-color="#4F46E5"/>
+                            <stop offset="1" stop-color="#7C3AED"/>
+                        </linearGradient>
+                    </defs>
+                </svg>
+                <h1>Media Authn</h1>
+            </div>
+            <p>Cryptographically sign and verify media files using GPG</p>
+        </header>
+
+        <div class="tabs">
+            <button class="tab-btn active" data-target="sign-panel">Sign Media</button>
+            <button class="tab-btn" data-target="verify-panel">Verify Media</button>
+        </div>
+
+        <!-- Sign Panel -->
+        <div id="sign-panel" class="panel active">
+            <form id="sign-form" class="action-form">
+                <div class="input-group">
+                    <label for="sign-file">Upload Original Media</label>
+                    <div class="file-upload drop-zone" id="sign-drop">
+                        <input type="file" id="sign-file" name="file" accept="image/*,video/*" required hidden>
+                        <span class="file-label">Drag & drop or click to browse</span>
+                        <div class="file-preview" id="sign-preview"></div>
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label for="keyid">GPG Key ID</label>
+                    <input type="text" id="keyid" name="keyid" placeholder="e.g. 0x12345678 or my@email.com" required>
+                </div>
+
+                <button type="submit" class="submit-btn" id="sign-submit">
+                    <span class="btn-text">Generate Signature & Zip</span>
+                    <div class="spinner hidden"></div>
+                </button>
+            </form>
+            <div class="status-msg" id="sign-status"></div>
+        </div>
+
+        <!-- Verify Panel -->
+        <div id="verify-panel" class="panel">
+            <form id="verify-form" class="action-form">
+                <div class="input-group">
+                    <label for="verify-zip">Upload Auth ZIP</label>
+                    <div class="file-upload drop-zone" id="zip-drop">
+                        <input type="file" id="verify-zip" name="zip_file" accept=".zip" required hidden>
+                        <span class="file-label zip-label">Drag & drop auth zip or click to browse</span>
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label for="verify-media">Upload Media to Verify</label>
+                    <div class="file-upload drop-zone" id="verify-drop">
+                        <input type="file" id="verify-media" name="media_file" accept="image/*,video/*" required hidden>
+                        <span class="file-label media-label">Drag & drop media file or click to browse</span>
+                        <div class="file-preview" id="verify-preview"></div>
+                    </div>
+                </div>
+
+                <button type="submit" class="submit-btn" id="verify-submit">
+                    <span class="btn-text">Verify Integrity</span>
+                    <div class="spinner hidden"></div>
+                </button>
+            </form>
+            <div class="status-msg" id="verify-status"></div>
+            
+            <div class="result-card hidden" id="verify-result">
+                <div class="result-icon"></div>
+                <h3 class="result-title"></h3>
+                <p class="result-desc"></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Tab switching
+        const tabBtns = document.querySelectorAll('.tab-btn');
+        const panels = document.querySelectorAll('.panel');
+
+        tabBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                tabBtns.forEach(b => b.classList.remove('active'));
+                panels.forEach(p => p.classList.remove('active'));
+                
+                btn.classList.add('active');
+                document.getElementById(btn.dataset.target).classList.add('active');
+                
+                // Reset statuses
+                document.getElementById('sign-status').innerText = "";
+                document.getElementById('verify-status').innerText = "";
+                document.getElementById('verify-result').classList.add('hidden');
+            });
+        });
+
+        // File upload UI setup
+        function setupFileInput(inputId, dropZoneId, labelClass, previewIdBox = null) {
+            const fileInput = document.getElementById(inputId);
+            const dropZone = document.getElementById(dropZoneId);
+            const label = dropZone.querySelector('.' + labelClass);
+            
+            dropZone.addEventListener('click', () => fileInput.click());
+            
+            dropZone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropZone.classList.add('drag-over');
+            });
+            
+            dropZone.addEventListener('dragleave', () => {
+                dropZone.classList.remove('drag-over');
+            });
+            
+            dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('drag-over');
+                if (e.dataTransfer.files.length) {
+                    fileInput.files = e.dataTransfer.files;
+                    updateUI();
+                }
+            });
+
+            fileInput.addEventListener('change', updateUI);
+            
+            function updateUI() {
+                if (fileInput.files.length > 0) {
+                    label.innerText = fileInput.files[0].name;
+                    dropZone.classList.add('has-file');
+                    
+                    if (previewIdBox && fileInput.files[0].type.startsWith("image/")) {
+                        const reader = new FileReader();
+                        reader.onload = (e) => {
+                            const preview = document.getElementById(previewIdBox);
+                            preview.innerHTML = `<img src="${e.target.result}" alt="Preview">`;
+                            preview.style.display = "block";
+                        }
+                        reader.readAsDataURL(fileInput.files[0]);
+                    }
+                } else {
+                    label.innerText = labelClass.includes('zip') ? 'Drag & drop auth zip or click to browse' : 
+                                    (labelClass.includes('media') ? 'Drag & drop media file or click to browse' : 'Drag & drop or click to browse');
+                    dropZone.classList.remove('has-file');
+                    if (previewIdBox) {
+                        document.getElementById(previewIdBox).style.display = "none";
+                    }
+                }
+            }
+        }
+
+        setupFileInput('sign-file', 'sign-drop', 'file-label', 'sign-preview');
+        setupFileInput('verify-zip', 'zip-drop', 'zip-label');
+        setupFileInput('verify-media', 'verify-drop', 'media-label', 'verify-preview');
+
+        // Form submission (Sign)
+        document.getElementById('sign-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const form = e.target;
+            const btn = document.getElementById('sign-submit');
+            const statusMsg = document.getElementById('sign-status');
+            
+            const btnText = btn.querySelector('.btn-text');
+            const spinner = btn.querySelector('.spinner');
+            
+            // set loading
+            btn.disabled = true;
+            btnText.classList.add('hidden');
+            spinner.classList.remove('hidden');
+            statusMsg.className = "status-msg";
+            statusMsg.innerText = "Signing media and generating Zip...";
+
+            const formData = new FormData(form);
+
+            try {
+                const response = await fetch('/api/sign', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    // It's a file download
+                    const blob = await response.blob();
+                    const downloadUrl = window.URL.createObjectURL(blob);
+                    
+                    // extract filename
+                    const header = response.headers.get("Content-Disposition");
+                    const parts = header.split(';');
+                    const filenameMatch = parts[1].match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+                    let filename = filenameMatch[1] ? filenameMatch[1].replace(/['"]/g, '') : "signed_auth.zip";
+                    
+                    const a = document.createElement("a");
+                    a.href = downloadUrl;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    
+                    window.URL.revokeObjectURL(downloadUrl);
+                    statusMsg.className = "status-msg success";
+                    statusMsg.innerText = "Successfully generated and downloaded ZIP!";
+                } else {
+                    const data = await response.json();
+                    statusMsg.className = "status-msg error";
+                    statusMsg.innerText = data.error || "Failed to sign media.";
+                }
+            } catch (err) {
+                statusMsg.className = "status-msg error";
+                statusMsg.innerText = err.message;
+            } finally {
+                btn.disabled = false;
+                btnText.classList.remove('hidden');
+                spinner.classList.add('hidden');
+            }
+        });
+
+        // Form submission (Verify)
+        document.getElementById('verify-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const form = e.target;
+            const btn = document.getElementById('verify-submit');
+            const resultCard = document.getElementById('verify-result');
+            const statusMsg = document.getElementById('verify-status');
+            
+            const btnText = btn.querySelector('.btn-text');
+            const spinner = btn.querySelector('.spinner');
+            
+            btn.disabled = true;
+            btnText.classList.add('hidden');
+            spinner.classList.remove('hidden');
+            statusMsg.innerText = "";
+            resultCard.classList.add('hidden');
+
+            const formData = new FormData(form);
+
+            try {
+                const response = await fetch('/api/verify', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                
+                resultCard.classList.remove('hidden');
+                
+                if (data.success && data.valid) {
+                    resultCard.className = "result-card success";
+                    resultCard.querySelector('.result-icon').innerHTML = "✓";
+                    resultCard.querySelector('.result-title').innerText = "Authentic & Unaltered";
+                    resultCard.querySelector('.result-desc').innerText = data.message;
+                } else {
+                    resultCard.className = "result-card danger";
+                    resultCard.querySelector('.result-icon').innerHTML = "✕";
+                    resultCard.querySelector('.result-title').innerText = "Verification Failed";
+                    resultCard.querySelector('.result-desc').innerText = data.message || data.error;
+                }
+            } catch (err) {
+                statusMsg.className = "status-msg error";
+                statusMsg.innerText = err.message;
+            } finally {
+                btn.disabled = false;
+                btnText.classList.remove('hidden');
+                spinner.classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

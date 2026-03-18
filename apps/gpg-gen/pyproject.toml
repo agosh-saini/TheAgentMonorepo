@@ -1,0 +1,25 @@
+[project]
+name = "gpg-gen"
+version = "0.1.0"
+description = "High standard GPG Key Generator Tool"
+authors = [
+    {name = "Antigravity", email = "ai@example.com"}
+]
+requires-python = ">=3.9"
+dependencies = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0"
+]
+
+[tool.pytest.ini_options]
+addopts = "-v --cov --cov-report=term-missing"
+markers = [
+    "smoke: mark a test as a smoke test"
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
